@@ -1,0 +1,720 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+
+local Mouse = LocalPlayer:GetMouse()
+
+local InfiniteJumpEnabled
+local InfiniteJumpEvent
+local InfiniteJumpCooldown = false
+
+local LastTimeSelected
+
+local ShadowsEnabled = true
+local FogEnabled = true
+local FogUpdating = false
+
+local CurrentWalkSpeed = 16
+local CurrentJumpPower = 50
+
+local NoclipEvent
+
+local AbortBringTrees = false
+
+local ClickSellEnabled = false
+local SellPoint = CFrame.new(330, -1, 86)
+
+local function GetCharacter(Player)
+    local Character = Player.Character or Player.CharacterAdded:Wait()
+    local Humanoid = Character:WaitForChild("Humanoid")
+    local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+
+    return Character, Humanoid, HumanoidRootPart
+end
+
+local function Teleport(Position)
+    local Character, Humanoid, HumanoidRootPart = GetCharacter(LocalPlayer)
+
+    HumanoidRootPart.CFrame = Position
+end
+
+
+RunService.RenderStepped:Connect(function()
+    local Character, Humanoid = GetCharacter(LocalPlayer)
+
+    Humanoid.WalkSpeed = CurrentWalkSpeed
+    Humanoid.UseJumpPower = true
+    Humanoid.JumpPower = CurrentJumpPower
+
+    Lighting.GlobalShadows = ShadowsEnabled
+
+    Lighting.FogStart = FogEnabled and 0 or math.huge
+    
+    if LastTimeSelected == "None" then
+        if not FogEnabled then
+            Lighting.FogEnd = math.huge
+        end
+    else
+        Lighting.FogEnd = math.huge
+    end
+    
+    if LastTimeSelected == "Day" then
+        Lighting.FogColor = Color3.fromRGB(170, 170, 170)
+        Lighting.ClockTime = 12
+        Lighting.OutdoorAmbient = Color3.fromRGB(220, 220, 220)
+        if FogEnabled then
+            Lighting.FogEnd = 6400
+        end
+    elseif LastTimeSelected == "Night" then
+        Lighting.FogColor = Color3.fromRGB(90, 90, 180)
+        Lighting.ClockTime = 0
+        Lighting.OutdoorAmbient = Color3.fromRGB(90, 90, 180)
+        if FogEnabled then
+            Lighting.FogEnd = 900
+        end
+    end
+end)
+
+
+local StorePlaces = {
+    ["Wood R Us"] = CFrame.new(Vector3.new(264, 6, 57)),
+    ["Land Store"] = CFrame.new(Vector3.new(272, 6, -98)),
+    ["Car Store"] = CFrame.new(Vector3.new(510, 6, -1474)),
+    ["Furniture Store"] = CFrame.new(Vector3.new(492, 6, -1699)),
+    ["Bob's Shack"] = CFrame.new(Vector3.new(250, 10, -2540)),
+    ["Links Logic"] = CFrame.new(Vector3.new(4609, 9, -767)),
+    ["Painting Store"] = CFrame.new(Vector3.new(5213, -164, 721)),
+}
+
+local StorePlacesOrder = {
+    "None",
+    "Wood R Us",
+    "Land Store",
+    "Car Store",
+    "Furniture Store",
+    "Bob's Shack",
+    "Links Logic",
+    "Painting Store"
+}
+
+local TreePlaces = {
+    ["Snow Peak"] = CFrame.new(Vector3.new(1467, 414, 3241)),
+    ["Volcano"] = CFrame.new(Vector3.new(-1597, 625, 1088)),
+    ["Swamp"] = CFrame.new(Vector3.new(-1088, 134, -1048)),
+    ["Water Cave"] = CFrame.new(Vector3.new(-1128, 3, -944)),
+    ["Palm Island 1"] = CFrame.new(Vector3.new(2610, -4, -10)),
+    ["Palm Island 2"] = CFrame.new(Vector3.new(1928, -4, -1491)),
+    ["Palm Island 3"] = CFrame.new(Vector3.new(4261, -4, -1804)),
+    ["Maze Cave"] = CFrame.new(Vector3.new(3568, -181, 459)),
+    ["Pine"] = CFrame.new(Vector3.new(923, 62, 1245)),
+}
+
+local TreePlacesOrder = {
+    "None",
+    "Snow Peak",
+    "Volcano",
+    "Swamp",
+    "Water Cave",
+    "Palm Island 1",
+    "Palm Island 2",
+    "Palm Island 3",
+    "Maze Cave",
+    "Pine"
+}
+
+local StructurePlaces = {
+    ["Ski Lodge"] = CFrame.new(Vector3.new(1300, 62, 2308)),
+    ["The Den"] = CFrame.new(Vector3.new(323, 44, 1928)),
+}
+
+local StructurePlacesOrder = {
+    "None",
+    "Ski Lodge",
+    "The Den"
+}
+
+local BringTreeOptions = {
+    "None",
+    "Generic",
+    "Oak",
+    "Birch",
+    "Volcano",
+    "GreenSwampy",
+    "GoldSwampy",
+    "Walnut",
+    "Cherry",
+    "Palm",
+    "Koa",
+    "CaveCrawler",
+    "Frost",
+    "Fir",
+    "Pine",
+    "Snowglow",
+}
+
+local function GetAxeDamage(Axe, TreeClass)
+    if Axe.ToolTip == "Basic Hatchet" then
+        return 0.2
+    elseif Axe.ToolTip == "Plain Axe" then
+        return 0.55
+    elseif Axe.ToolTip == "Steel Axe" then
+        return 0.93
+    elseif Axe.ToolTip == "Hardened Axe" then
+        return 1.45
+    elseif Axe.ToolTip == "Silver Axe" then
+        return 1.6
+    elseif Axe.ToolTip == "Rukiryaxe" then
+        return 1.68
+    elseif Axe.ToolTip == "Beta Axe of Bosses" then
+        return 1.45
+    elseif Axe.ToolTip == "Alpha Axe of Testing" then
+        return 1.5
+    elseif Axe.ToolTip == "Fire Axe" then
+        if TreeClass ~= "Volcano" then
+            return 0.6
+        else
+            return 6.35
+        end
+    elseif Axe.ToolTip == "End Times Axe" then
+        if TreeClass ~= "LoneCave" then return 1.58 else
+            return 10000000
+        end
+    elseif Axe.ToolTip == "Candy Cane Axe" then
+        return 0
+    elseif Axe.ToolTip == "Johiro" then
+        return 1.8
+    elseif Axe.ToolTip == "Beesaxe" then
+        return 1.4
+    elseif Axe.ToolTip == "CHICKEN AXE" then
+        return 0.9
+    elseif Axe.ToolTip == "Amber Axe" then
+        return 3.39
+    elseif Axe.ToolTip == "The Many Axe" then
+        return 10.2
+    elseif Axe.ToolTip == "Gingerbread Axe" then
+        if TreeClass == "Walnut" then
+            return 8.5
+        elseif TreeClass == "Koa" then
+            return 11
+        else
+            return 1.2
+        end
+    elseif Axe.ToolTip == "Bird Axe" then
+        if TreeClass == "Volcano" then
+            return 2.5
+        elseif TreeClass == "CaveCrawler" then
+            return 3.9
+        else
+            return 1.55
+        end
+    end
+end
+
+local function BringLog(Log, TargetLocation)
+    local Finished = false
+    local Character, Humanoid, HumanoidRootPart = GetCharacter(LocalPlayer)
+    spawn(function()
+        while not Finished and not AbortBringTrees do
+            HumanoidRootPart.CFrame = Log.CFrame
+            ReplicatedStorage.Interaction.ClientIsDragging:FireServer(Log.Parent)
+            wait()
+        end
+        HumanoidRootPart.CFrame = TargetLocation
+    end)
+
+    wait(0.2)
+
+    Log.CFrame = TargetLocation
+
+    wait(0.2)
+
+    Finished = true
+end
+
+local function ChopTree(Tree)
+    local Log
+
+    for _, WoodSection in ipairs(Tree:GetChildren()) do
+        if WoodSection.Name == "WoodSection" and WoodSection:FindFirstChild("ID") and WoodSection.ID.Value == 1 then
+            Log = WoodSection
+        end
+    end
+
+    local Character = GetCharacter(LocalPlayer)
+
+    print(Log, Tree)
+
+    Character.HumanoidRootPart.CFrame = Log.CFrame
+
+    if Log.Name == "WoodSection" and (Character.HumanoidRootPart.Position - Log.Position).magnitude < 10 and not AbortBringTrees then
+        local Tool = Character:FindFirstChild("Tool")
+        local ChoppedTree
+
+        if not Tool then
+            warn("equip an axe")
+            Fluent:Notify({
+                Title = "Warning",
+                Content = "Please equip an axe",
+                SubContent = "",
+                Duration = 5
+            })
+            return
+        end
+
+        Tree.ChildAdded:Connect(function(Child)
+            if Child.Name == "InnerWood" then
+                workspace.LogModels.ChildAdded:Connect(function(Child)
+                    if Child:WaitForChild("Owner") then
+                        if Child.Owner.Value == LocalPlayer and not ChoppedTree and not AbortBringTrees then
+                            ChoppedTree = Child
+                        end
+                    end
+                end)
+            end
+        end)
+
+        while not ChoppedTree and Log and Tree and not AbortBringTrees do
+            Character.HumanoidRootPart.CFrame = Log.CFrame
+            if (Character.HumanoidRootPart.Position - Log.Position).magnitude < 10 then
+                local args = {
+                    [1] = Tree.CutEvent,
+                    [2] = {
+                        ["tool"] = Tool,
+                        ["faceVector"] = Vector3.new(0,0,-1),
+                        ["height"] = 0.5,
+                        ["sectionId"] = Log.ID.Value,
+                        ["hitPoints"] = GetAxeDamage(Tool, Tree.TreeClass.Value),
+                        ["cooldown"] = 0,
+                        ["cuttingClass"] = "Axe"
+                    }
+                }
+                
+                ReplicatedStorage.Interaction.RemoteProxy:FireServer(unpack(args))
+                wait()
+            end
+        end
+        
+        if AbortBringTrees then return nil end
+
+        local MainLog
+
+        for _, WoodSection in ipairs(ChoppedTree:GetChildren()) do
+            if WoodSection.Name == "WoodSection" and WoodSection:FindFirstChild("ID") and WoodSection.ID.Value == 1 then
+                MainLog = WoodSection
+            end
+        end
+        return ChoppedTree, MainLog
+    else
+        print("log is not woodsection or character not close enough.")
+    end
+    return nil
+end
+
+local function SearchTree(TreeClass)
+    local BiggestTree
+    local AmountOfLogs = 0
+
+    for _, Tree in ipairs(workspace:GetDescendants()) do
+        if Tree:FindFirstChild("CutEvent") and Tree:FindFirstChild("Owner") and Tree:FindFirstChild("TreeClass") and Tree.TreeClass.Value == TreeClass and Tree.Parent ~= workspace.LogModels and not AbortBringTrees and #Tree:GetChildren() > AmountOfLogs then
+            BiggestTree = Tree
+            AmountOfLogs = #Tree:GetChildren()
+        end
+    end
+    return BiggestTree
+end
+
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+
+local Window = Fluent:CreateWindow({
+    Title = "LT2 Cheats",
+    SubTitle = "because yes",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(650, 400),
+    Acrylic = true,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+if game.PlaceId ~= 13822889 then
+    game.StarterGui:SetCore("SendNotification", { Title = "This script only works in Lumber Tycoon 2!"; Text = "" })
+    Fluent:Destroy()
+end
+
+Fluent:Notify({
+    Title = "LT2 Cheats",
+    Content = "have fun",
+    SubContent = "",
+    Duration = 5
+})
+
+local Tabs = {
+    Player = Window:AddTab({ Title = "Player", Icon = "user" }),
+    Visuals = Window:AddTab({ Title = "Visuals", Icon = "eye" }),
+    Trees = Window:AddTab({ Title = "Trees", Icon = "tree-pine" }),
+    Teleports = Window:AddTab({ Title = "Teleports", Icon = "plane" }),
+}
+
+Window:SelectTab(1)
+
+local Section = Tabs.Player:AddSection("Modifiers")
+
+local NoclippedParts = {}
+
+local NoclipToggle = Tabs.Player:AddToggle("MyToggle", 
+{
+    Title = "Noclip", 
+    Description = "Walk through walls",
+    Default = false,
+    Callback = function(state)
+        local Character, Humanoid = GetCharacter(LocalPlayer)
+
+        if state then
+            local function NoclipLoop()
+                for _, Child in pairs(Character:GetDescendants()) do
+                    if Child:IsA("BasePart") and Child.CanCollide then
+                        table.insert(NoclippedParts, Child)
+                        Child.CanCollide = false
+                    end
+                end
+            end
+
+            NoclipEvent = RunService.Stepped:Connect(NoclipLoop)
+        else
+            if NoclipEvent then
+                NoclipEvent:Disconnect()
+                for _, Part in ipairs(NoclippedParts) do
+                    if Part and not Part.CanCollide then
+                        Part.CanCollide = true
+                    end
+                end
+            end
+        end
+    end,
+})
+
+local Slider = Tabs.Player:AddSlider("Slider", 
+{
+    Title = "Walk Speed",
+    Description = "Run faster",
+    Default = 16,
+    Min = 16,
+    Max = 500,
+    Rounding = 0,
+    Callback = function(Value)
+        CurrentWalkSpeed = Value        
+    end
+})
+
+local Slider = Tabs.Player:AddSlider("Slider", 
+{
+    Title = "Jump Power",
+    Description = "Jump higher",
+    Default = 50,
+    Min = 50,
+    Max = 500,
+    Rounding = 0,
+    Callback = function(Value)
+        CurrentJumpPower = Value
+    end
+})
+
+local Toggle = Tabs.Player:AddToggle("MyToggle",
+{
+    Title = "Infinite Jump",
+    Description = "Jump infinitely",
+    Default = false,
+
+    Callback = function(state)
+        if state then
+            if InfiniteJumpEnabled then
+                InfiniteJumpEvent:Disconnect()
+            end
+            InfiniteJumpEnabled = true
+            InfiniteJumpCooldown = false
+            InfiniteJumpEvent = UserInputService.JumpRequest:Connect(function()
+                if not InfiniteJumpCooldown then
+                    InfiniteJumpCooldown = true
+                    GetCharacter(LocalPlayer):FindFirstChildWhichIsA("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping)
+                    wait()
+                    InfiniteJumpCooldown = false
+                end
+            end)
+        else
+            if InfiniteJumpEnabled then
+                InfiniteJumpEvent:Disconnect()
+            end
+            InfiniteJumpEnabled = false
+        end
+    end,
+})
+
+local Toggle = Tabs.Player:AddToggle("MyToggle", 
+{
+    Title = "Jesus", 
+    Description = "Ability to walk on water",
+    Default = false,
+    Callback = function(state)
+        for _, Water in workspace.Water:GetChildren() do
+            if Water.Name == "Water" then
+                Water.CanCollide = state
+            end
+        end
+    end,
+})
+
+local Section = Tabs.Visuals:AddSection("Time")
+
+local AlwaysNight
+
+local AlwaysDay = Tabs.Visuals:AddToggle("MyToggle",
+{
+    Title = "Always Day",
+    Description = "Keeps it day time",
+    Default = false,
+    Callback = function(state)
+        if state then
+            AlwaysNight:SetValue(false)
+            LastTimeSelected = "Day"
+            print("selected to", LastTimeSelected)
+        else
+            LastTimeSelected = "None"
+            print("selected to", LastTimeSelected)
+        end
+    end
+})
+
+AlwaysNight = Tabs.Visuals:AddToggle("MyToggle",
+{
+    Title = "Always Night",
+    Description = "Keeps it night time",
+    Default = false,
+    Callback = function(state)
+        if state then
+            AlwaysDay:SetValue(false)
+            LastTimeSelected = "Night"
+            print("selected to", LastTimeSelected)
+        else
+            LastTimeSelected = "None"
+            print("selected to", LastTimeSelected)
+        end
+    end
+})
+
+local Section = Tabs.Visuals:AddSection("World")
+
+local Toggle = Tabs.Visuals:AddToggle("MyToggle", 
+{
+    Title = "Shadows", 
+    Description = "Enable or disable global shadows",
+    Default = true,
+    Callback = function(state)
+        ShadowsEnabled = state
+    end,
+})
+
+local Toggle = Tabs.Visuals:AddToggle("MyToggle", 
+{
+    Title = "Fog", 
+    Description = "Enable or disable fog",
+    Default = true,
+    Callback = function(state)
+        FogEnabled = state
+    end,
+})
+
+local Toggle = Tabs.Visuals:AddToggle("MyToggle", 
+{
+    Title = "Snow Particles", 
+    Description = "Enable or disable snow particles",
+    Default = true,
+    Callback = function(state)
+        for _, Particle in workspace.Effects:GetDescendants() do
+            if Particle:IsA("ParticleEmitter") then
+                Particle.Enabled = state
+            end
+        end
+    end,
+})
+
+local Section = Tabs.Teleports:AddSection("Places")
+
+local Dropdown = Tabs.Teleports:AddDropdown("Dropdown", {
+    Title = "Stores",
+    Description = "Teleport",
+    Values = StorePlacesOrder,
+    Multi = false,
+    Default = "None",
+})
+
+Dropdown:OnChanged(function(Value)
+    if Value == "None" then
+        return
+    end
+    
+    Teleport(StorePlaces[Value])
+end)
+
+local Dropdown = Tabs.Teleports:AddDropdown("Dropdown", {
+    Title = "Trees",
+    Description = "Teleport",
+    Values = TreePlacesOrder,
+    Multi = false,
+    Default = "None",
+})
+
+Dropdown:OnChanged(function(Value)
+    if Value == "None" then
+        return
+    end
+    
+    Teleport(TreePlaces[Value])
+end)
+
+local Dropdown = Tabs.Teleports:AddDropdown("Dropdown", {
+    Title = "Structures",
+    Description = "Teleport",
+    Values = StructurePlacesOrder,
+    Multi = false,
+    Default = "None",
+})
+
+Dropdown:OnChanged(function(Value)
+    if Value == "None" then
+        return
+    end
+
+    Teleport(StructurePlaces[Value])
+end)
+
+local Section = Tabs.Trees:AddSection("Bring")
+
+local SelectedTree
+
+local Dropdown = Tabs.Trees:AddDropdown("Dropdown", {
+    Title = "Tree type",
+    Description = "Select the tree type you want",
+    Values = BringTreeOptions,
+    Multi = false,
+    Default = "None",
+})
+
+Dropdown:OnChanged(function(Value)
+    SelectedTree = Value
+end)
+
+local TreeAmount = 1
+
+local Slider = Tabs.Trees:AddSlider("Slider", 
+{
+    Title = "Amount",
+    Description = "The amount of trees you want to get",
+    Default = 1,
+    Min = 1,
+    Max = 10,
+    Rounding = 0,
+    Callback = function(Value)
+        TreeAmount = Value
+    end
+})
+
+Tabs.Trees:AddButton({
+    Title = "Bring",
+    Description = "You need to have an axe equipped",
+    Callback = function()
+        if SelectedTree ~= "None" then
+            AbortBringTrees = false
+            local Character, Humanoid, HumanoidRootPart = GetCharacter(LocalPlayer)
+            local TargetLocation = HumanoidRootPart.CFrame
+            NoclipToggle:SetValue(true)
+            for i = 1, TreeAmount do
+                if AbortBringTrees then return end
+                local Tree = SearchTree(SelectedTree)
+
+                local ChoppedTree, MainLog = ChopTree(Tree)
+
+                if ChoppedTree and TargetLocation and Character and Humanoid and HumanoidRootPart then
+                    BringLog(MainLog, TargetLocation)
+                else
+                    warn("Chopped tree not found")
+                    HumanoidRootPart.CFrame = TargetLocation
+                    break
+                end
+            end
+            NoclipToggle:SetValue(false)
+        else
+            Fluent:Notify({
+                Title = "Warning",
+                Content = "Please select a tree",
+                SubContent = "",
+                Duration = 5
+            })
+        end
+    end
+})
+
+Tabs.Trees:AddButton({
+    Title = "Abort",
+    Description = "Stops bringing the tree(s)",
+    Callback = function()
+        AbortBringTrees = true
+    end
+})
+
+local Section = Tabs.Trees:AddSection("Sell")
+
+local Toggle = Tabs.Trees:AddToggle("MyToggle", 
+{
+    Title = "Click to Sell", 
+    Description = "Press H on a log or plank to sell it.",
+    Default = false,
+    Callback = function(state)
+        ClickSellEnabled = state
+    end,
+})
+
+UserInputService.InputBegan:Connect(function(Input, Typing)
+    if not Typing and Input.KeyCode == Enum.KeyCode.H and ClickSellEnabled then
+        local Target = Mouse.Target
+        local TargetParent = Target.Parent
+        if Target.Name == "WoodSection" then
+            local SoldAll = false
+            local Character, Humanoid, HumanoidRootPart = GetCharacter(LocalPlayer)
+            local TargetLocation = HumanoidRootPart.CFrame
+            NoclipToggle:SetValue(true)
+
+            local CamPart = Instance.new("Part", workspace)
+            CamPart.Anchored = true
+            CamPart.CFrame = SellPoint
+            CamPart.Transparency = 1
+            CamPart.CanCollide = false
+
+            workspace.Camera.CameraSubject = CamPart
+
+            while TargetParent and not SoldAll do
+                local Selling = TargetParent:FindFirstChild("WoodSection")
+                if Selling then
+                    BringLog(Selling, SellPoint)
+                else
+                    SoldAll = true
+                end
+                wait(0.1)
+            end
+            if Character and Humanoid and HumanoidRootPart then
+                NoclipToggle:SetValue(false)
+                workspace.Camera.CameraSubject = Humanoid
+                CamPart:Destroy()
+                HumanoidRootPart.Anchored = true
+                HumanoidRootPart.CFrame = TargetLocation
+                wait(0.5)
+                HumanoidRootPart.Anchored = false
+            else
+                warn("Failed to tp back, character/humanoid/humanoidrootpart are missing")
+            end
+        end
+    end
+end)
+
+local Section = Tabs.Trees:AddSection("Modify")
